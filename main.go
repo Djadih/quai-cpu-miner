@@ -99,6 +99,10 @@ func connectToSlice(config util.Config) SliceClients {
 	return clients
 }
 
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
 func main() {
 	// Load config
 	config, err := util.LoadConfig("..")
@@ -157,16 +161,20 @@ func (m *Miner) fetchPendingHeader() {
 
 		msg := rpc.ConstructJSON("2.0", json.RawMessage("1"), "quai_getPendingHeader", nil)
 
-		var header chan *types.Header
+		// var header_chan chan *types.Header
 
-		err := m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg, header)
+		err := m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg, m.updateCh)
+		log.Println("Sent pending header request")
+		header := <-m.updateCh
+		fmt.Println(("Received from Header channel"))
 
-		for {
-			select {
-			case <-header:
-				fmt.Println(("Header"))
-			}
-		}
+
+		// for {
+		// 	select {
+		// 		case header <-m.updateCh:
+		// 			fmt.Println(("Received from Header channel"))
+		// 		}
+		// }
 		if err != nil {
 			log.Println("Pending block not found error: ", err)
 			time.Sleep(time.Duration(retryDelay) * time.Second)

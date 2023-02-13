@@ -2,7 +2,7 @@ module github.com/dominant-strategies/quai-cpu-miner
 
 go 1.19
 
-replace github.com/dominant-strategies/go-quai => ../../dominant-strategies/go-quai
+replace github.com/dominant-strategies/go-quai => ../../djadih/go-quai
 
 require (
 	github.com/TwiN/go-color v1.4.0

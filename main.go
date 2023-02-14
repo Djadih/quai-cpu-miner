@@ -133,7 +133,8 @@ func main() {
 		previousNumber: [common.HierarchyDepth]uint64{0, 0, 0},
 	}
 	log.Println("Starting Quai cpu miner in location ", config.Location)
-	m.fetchPendingHeader()
+	go m.startListener()
+	go m.fetchPendingHeader()
 	go m.subscribePendingHeader()
 	go m.resultLoop()
 	go m.miningLoop()
@@ -151,6 +152,11 @@ func (m *Miner) subscribePendingHeader() {
 	// }
 }
 
+func (m *Miner) startListener() {
+	m.sliceClients[common.ZONE_CTX].ListenTCP(m.updateCh)
+
+}
+
 // PendingBlocks gets the latest block when we have received a new pending header. This will get the receipts,
 // transactions, and uncles to be stored during mining.
 func (m *Miner) fetchPendingHeader() {
@@ -163,11 +169,10 @@ func (m *Miner) fetchPendingHeader() {
 
 		// var header_chan chan *types.Header
 
-		err := m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg, m.updateCh)
+		err := m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
 		log.Println("Sent pending header request")
 		header := <-m.updateCh
 		fmt.Println(("Received from Header channel"))
-
 
 		// for {
 		// 	select {
@@ -184,7 +189,7 @@ func (m *Miner) fetchPendingHeader() {
 			}
 		} else {
 			m.updateCh <- header
-			break
+			// break
 		}
 	}
 }

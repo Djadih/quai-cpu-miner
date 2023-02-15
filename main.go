@@ -150,11 +150,15 @@ func (m *Miner) subscribePendingHeader() {
 	// if _, err := m.sliceClients(common.ZONE_CTX).SubscribePendingHeader(context.Background(), m.updateCh); err != nil {
 	// 	log.Fatal("Failed to subscribe to pending header events", err)
 	// }
+
+	// user_ver := "make_const"
+	// msg := rpc.ConstructJSON("2.0", json.RawMessage{"1"}, "quai_submitLogin", )
+	// err := m.sliceClients[common.ZONE_CTX].SendTCPRequest(nil)
+
 }
 
 func (m *Miner) startListener() {
 	m.sliceClients[common.ZONE_CTX].ListenTCP(m.updateCh)
-
 }
 
 // PendingBlocks gets the latest block when we have received a new pending header. This will get the receipts,
@@ -305,6 +309,7 @@ func (m *Miner) resultLoop() error {
 				go m.sendMinedHeader(common.REGION_CTX, header, &wg)
 			}
 			if order <= common.ZONE_CTX {
+				log.Println("Sending mined header")
 				go m.sendMinedHeader(common.ZONE_CTX, header, &wg)
 			}
 		}
@@ -318,6 +323,51 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGrou
 	// if err != nil {
 	// 	fmt.Println("error submitting block: ", err)
 	// }
+
+	retryDelay := 1 // Start retry at 1 second
+	for {
+		header_msg, err := json.Marshal(rpc.RPCMarshalHeader(header))
+		if err != nil {
+			log.Printf("Unable to marshal pending header to send: %v", err)
+		}
+		msg := rpc.ConstructJSON("2.0", json.RawMessage("1"), "quai_receiveMinedHeader", header_msg)
+
+		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
+		if err != nil {
+			log.Printf("Unable to send pending header to node: %v", err)
+			time.Sleep(time.Duration(retryDelay) * time.Second)
+			retryDelay *= 2
+			if retryDelay > maxRetryDelay {
+				retryDelay = maxRetryDelay
+			}
+		} else {
+			break
+		}
+		// log.Println("Sent pending header request")
+		// header := <-m.updateCh
+		// m.updateCh <- header
+		// fmt.Println(("Received from Header channel"))
+
+		// for {
+		// 	select {
+		// 		case header <-m.updateCh:
+		// 			fmt.Println(("Received from Header channel"))
+		// 		}
+		// }
+		// if err != nil {
+		// 	log.Println("Pending block not found error: ", err)
+		// 	time.Sleep(time.Duration(retryDelay) * time.Second)
+		// 	retryDelay *= 2
+		// 	if retryDelay > maxRetryDelay {
+		// 		retryDelay = maxRetryDelay
+		// 	}
+		// } else {
+		// 	// m.updateCh <- header
+		// 	break
+		// }
+	}
+
+	
 	defer wg.Done()
 }
 

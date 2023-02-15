@@ -6,6 +6,11 @@ GOBIN = ./build/bin
 GO ?= latest
 GORUN = env GO111MODULE=on go run
 
+dev:
+	go build -gcflags="all=-N -l" -o ./build/bin/quai-cpu-miner main.go  
+	@echo "Done building."
+	@echo "Run \"$(GOBIN)\" to launch quai-cpu-miner"	
+
 quai-cpu-miner:
 	go build -o ./build/bin/quai-cpu-miner main.go  
 	@echo "Done building."

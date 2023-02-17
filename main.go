@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/INFURA/go-ethlibs/jsonrpc"
+
 	"github.com/TwiN/go-color"
 	"github.com/dominant-strategies/go-quai/common"
 	"github.com/dominant-strategies/go-quai/consensus/blake3pow"
@@ -26,6 +28,7 @@ const (
 	// resultQueueSize is the size of channel listening to sealing result.
 	resultQueueSize = 10
 	maxRetryDelay   = 60 * 60 * 4 // 4 hours
+	USER_AGENT_VER  = "0.1"
 )
 
 var (
@@ -134,7 +137,7 @@ func main() {
 	}
 	log.Println("Starting Quai cpu miner in location ", config.Location)
 	go m.startListener()
-	go m.fetchPendingHeader()
+	// go m.fetchPendingHeader()
 	go m.subscribePendingHeader()
 	go m.resultLoop()
 	go m.miningLoop()
@@ -146,15 +149,31 @@ func main() {
 
 // subscribePendingHeader subscribes to the head of the mining nodes in order to pass
 // the most up to date block to the miner within the manager.
-func (m *Miner) subscribePendingHeader() {
+func (m *Miner) subscribePendingHeader() error {
 	// if _, err := m.sliceClients(common.ZONE_CTX).SubscribePendingHeader(context.Background(), m.updateCh); err != nil {
 	// 	log.Fatal("Failed to subscribe to pending header events", err)
 	// }
 
-	// user_ver := "make_const"
-	// msg := rpc.ConstructJSON("2.0", json.RawMessage{"1"}, "quai_submitLogin", )
-	// err := m.sliceClients[common.ZONE_CTX].SendTCPRequest(nil)
+	// user_agent_version := json.RawMessage([]byte(USER_AGENT_VER))
+	// auth := util.Miner_auth{
+	// 	Username: "user",
+	// 	Password: "pass",
+	// }
+	// auth_msg, err := json.Marshal(auth)
+	// if err != nil {
+	// 	log.Fatalf("Unable to marshal username and password: %v", err)
+	// }
+	username := "user"
+	password := "password"
 
+	// msg := rpc.ConstructJSONRPC("2.0", json.RawMessage("1"), "quai_submitLogin", []json.RawMessage{[]byte(username), []byte(password)})
+	msg, err := jsonrpc.MakeRequest(1, "quai_submitLogin", m.config.Location, username, password)
+	if err != nil {
+		log.Fatalf("Unable to create login request: %v", err)
+	}
+
+	return m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
+	// return nil
 }
 
 func (m *Miner) startListener() {
@@ -169,11 +188,15 @@ func (m *Miner) fetchPendingHeader() {
 		// header, err := m.client(common.ZONE_CTX).GetPendingHeader(context.Background())
 		// header, err := m.sliceClients[][loc.Zone()].sendRPC()
 
-		msg := rpc.ConstructJSON("2.0", json.RawMessage("1"), "quai_getPendingHeader", nil)
+		// msg := rpc.ConstructJSONRPC("2.0", json.RawMessage("1"), "quai_getPendingHeader", nil)
+		msg, err := jsonrpc.MakeRequest(1, "quai_getPendingHeader", nil)
+		if err != nil {
+			log.Fatalf("Unable to make pending header request: %v", err)
+		}
 
 		// var header_chan chan *types.Header
 
-		err := m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
+		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
 		log.Println("Sent pending header request")
 		header := <-m.updateCh
 		fmt.Println(("Received from Header channel"))
@@ -330,7 +353,8 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGrou
 		if err != nil {
 			log.Printf("Unable to marshal pending header to send: %v", err)
 		}
-		msg := rpc.ConstructJSON("2.0", json.RawMessage("1"), "quai_receiveMinedHeader", header_msg)
+		// msg := rpc.ConstructJSONRPC("2.0", json.RawMessage("1"), "quai_receiveMinedHeader", []json.RawMessage{header_msg})
+		msg, err := jsonrpc.MakeRequest(1, "quai_receiveMinedHeader", header_msg)
 
 		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
 		if err != nil {
@@ -367,7 +391,6 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGrou
 		// }
 	}
 
-	
 	defer wg.Done()
 }
 

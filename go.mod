@@ -5,6 +5,7 @@ go 1.19
 replace github.com/dominant-strategies/go-quai => ../../djadih/go-quai
 
 require (
+	github.com/INFURA/go-ethlibs v0.0.0-20230210163729-fc6ca4235802
 	github.com/TwiN/go-color v1.4.0
 	github.com/dominant-strategies/go-quai v0.1.0-rc.0
 	github.com/spf13/viper v1.14.0

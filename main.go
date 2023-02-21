@@ -197,9 +197,9 @@ func (m *Miner) fetchPendingHeader() {
 		// var header_chan chan *types.Header
 
 		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
-		log.Println("Sent pending header request")
+		// log.Println("Sent pending header request")
 		header := <-m.updateCh
-		fmt.Println(("Received from Header channel"))
+		// fmt.Println(("Received from Header channel"))
 
 		// for {
 		// 	select {
@@ -332,8 +332,8 @@ func (m *Miner) resultLoop() error {
 				go m.sendMinedHeader(common.REGION_CTX, header, &wg)
 			}
 			if order <= common.ZONE_CTX {
-				log.Println("Sending mined header")
-				// go m.sendMinedHeader(common.ZONE_CTX, header, &wg)
+				// log.Println("Sending mined header")
+				go m.sendMinedHeader(common.ZONE_CTX, header, &wg)
 			}
 		}
 	}
@@ -349,7 +349,6 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGrou
 
 	retryDelay := 1 // Start retry at 1 second
 	for {
-		return
 		header_msg := rpc.RPCMarshalHeader(header)
 		header_req, err := jsonrpc.MakeRequest(0, "quai_receiveMinedHeader", header_msg)
 		if err != nil {
@@ -364,7 +363,7 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGrou
 		// if err != nil {
 		// 	log.Fatalf("Unable to marshal mined header: %v", err)
 		// }
-		log.Println("About to send")
+		// log.Println("About to send")
 		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*header_req)
 		if err != nil {
 			log.Printf("Unable to send pending header to node: %v", err)

@@ -2,7 +2,7 @@ package main
 
 import (
 	// "context"
-	"encoding/json"
+	// "encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -333,7 +333,7 @@ func (m *Miner) resultLoop() error {
 			}
 			if order <= common.ZONE_CTX {
 				log.Println("Sending mined header")
-				go m.sendMinedHeader(common.ZONE_CTX, header, &wg)
+				// go m.sendMinedHeader(common.ZONE_CTX, header, &wg)
 			}
 		}
 	}
@@ -349,14 +349,23 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGrou
 
 	retryDelay := 1 // Start retry at 1 second
 	for {
-		header_msg, err := json.Marshal(rpc.RPCMarshalHeader(header))
+		return
+		header_msg := rpc.RPCMarshalHeader(header)
+		header_req, err := jsonrpc.MakeRequest(0, "quai_receiveMinedHeader", header_msg)
 		if err != nil {
-			log.Printf("Unable to marshal pending header to send: %v", err)
+			log.Fatalf("Could not send mined header: %v", err)
 		}
-		// msg := rpc.ConstructJSONRPC("2.0", json.RawMessage("1"), "quai_receiveMinedHeader", []json.RawMessage{header_msg})
-		msg, err := jsonrpc.MakeRequest(1, "quai_receiveMinedHeader", header_msg)
 
-		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
+		// if err != nil {
+		// 	log.Printf("Unable to marshal pending header to send: %v", err)
+		// }
+		// msg := rpc.ConstructJSONRPC("2.0", json.RawMessage("1"), "quai_receiveMinedHeader", []json.RawMessage{header_msg})
+		// msg, err := jsonrpc.MakeRequest(1, "quai_receiveMinedHeader", header_msg)
+		// if err != nil {
+		// 	log.Fatalf("Unable to marshal mined header: %v", err)
+		// }
+		log.Println("About to send")
+		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*header_req)
 		if err != nil {
 			log.Printf("Unable to send pending header to node: %v", err)
 			time.Sleep(time.Duration(retryDelay) * time.Second)
@@ -367,6 +376,7 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGrou
 		} else {
 			break
 		}
+		log.Println("Sent mined header")
 		// log.Println("Sent pending header request")
 		// header := <-m.updateCh
 		// m.updateCh <- header

@@ -137,7 +137,7 @@ func main() {
 	}
 	log.Println("Starting Quai cpu miner in location ", config.Location)
 	go m.startListener()
-	// go m.fetchPendingHeader()
+	go m.fetchPendingHeader()
 	go m.subscribePendingHeader()
 	go m.resultLoop()
 	go m.miningLoop()
@@ -163,11 +163,11 @@ func (m *Miner) subscribePendingHeader() error {
 	// if err != nil {
 	// 	log.Fatalf("Unable to marshal username and password: %v", err)
 	// }
-	username := "user"
+	address := "0x4a06cbb083ce0ae76aa393db8acfced7552b7218"
 	password := "password"
 
 	// msg := rpc.ConstructJSONRPC("2.0", json.RawMessage("1"), "quai_submitLogin", []json.RawMessage{[]byte(username), []byte(password)})
-	msg, err := jsonrpc.MakeRequest(1, "quai_submitLogin", m.config.Location, username, password)
+	msg, err := jsonrpc.MakeRequest(1, "quai_submitLogin", address, password)
 	if err != nil {
 		log.Fatalf("Unable to create login request: %v", err)
 	}

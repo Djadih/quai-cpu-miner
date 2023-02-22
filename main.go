@@ -16,7 +16,10 @@ import (
 	"github.com/dominant-strategies/go-quai/common"
 	"github.com/dominant-strategies/go-quai/consensus/blake3pow"
 	"github.com/dominant-strategies/go-quai/core/types"
-	"github.com/dominant-strategies/go-quai/rpc"
+	"github.com/dominant-strategies/go-quai/quaiclient"
+
+	"github.com/dominant-strategies/go-quai-stratum/rpc"
+
 	"github.com/dominant-strategies/quai-cpu-miner/util"
 )
 
@@ -296,8 +299,7 @@ func (m *Miner) resultLoop() error {
 func (m *Miner) sendMinedHeader(ctx int, header *types.Header) {
 	retryDelay := 1 // Start retry at 1 second
 	for {
-		header_msg := rpc.RPCMarshalHeader(header)
-		header_req, err := jsonrpc.MakeRequest(0, "quai_receiveMinedHeader", header_msg)
+		header_req, err := jsonrpc.MakeRequest(0, "quai_receiveMinedHeader", quaiclient.RPCMarshalHeader(header))
 		if err != nil {
 			log.Fatalf("Could not send mined header: %v", err)
 		}

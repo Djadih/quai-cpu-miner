@@ -1,17 +1,13 @@
 package main
 
 import (
-	// "context"
-	// "encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math/big"
 
-	// "net"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/INFURA/go-ethlibs/jsonrpc"
@@ -68,29 +64,27 @@ func connectToSlice(config util.Config) SliceClients {
 	var err error
 	loc := config.Location
 	clients := SliceClients{}
-	primeConnected := true
-	regionConnected := true
+	primeConnected := false
+	regionConnected := false
 	zoneConnected := false
 	for !primeConnected || !regionConnected || !zoneConnected {
-		// if config.PrimeURL != "" && !primeConnected {
-		// 	clients[common.PRIME_CTX], err = ethclient.Dial(config.PrimeURL)
-		// 	if err != nil {
-		// 		log.Println("Unable to connect to node:", "Prime", config.PrimeURL)
-		// 	} else {
-		// 		primeConnected = true
-		// 	}
-		// }
-		// if config.RegionURLs[loc.Region()] != "" && !regionConnected {
-		// 	clients[common.REGION_CTX], err = ethclient.Dial(config.RegionURLs[loc.Region()])
-		// 	if err != nil {
-		// 		log.Println("Unable to connect to node:", "Region", config.RegionURLs[loc.Region()])
-		// 	} else {
-		// 		regionConnected = true
-		// 	}
-		// }
+		if config.PrimeURL != "" && !primeConnected {
+			clients[common.PRIME_CTX], err = rpc.NewMinerConn(config.PrimeURL)
+			if err != nil {
+				log.Println("Unable to connect to node:", "Prime", config.PrimeURL)
+			} else {
+				primeConnected = true
+			}
+		}
+		if config.RegionURLs[loc.Region()] != "" && !regionConnected {
+			clients[common.REGION_CTX], err = rpc.NewMinerConn(config.RegionURLs[loc.Region()])
+			if err != nil {
+				log.Println("Unable to connect to node:", "Region", config.RegionURLs[loc.Region()])
+			} else {
+				regionConnected = true
+			}
+		}
 		if config.ZoneURLs[loc.Region()][loc.Zone()] != "" && !zoneConnected {
-			// clients[common.ZONE_CTX], err = ethclient.DialMiner(config.ZoneURLs[loc.Region()][loc.Zone()])
-			// clients[common.ZONE_CTX], err = rpc.NewMinerConn(config.ZoneURLs[loc.Region()][loc.Zone()])
 			clients[common.ZONE_CTX], err = rpc.NewMinerConn(config.ZoneURLs[loc.Region()][loc.Zone()])
 			if err != nil {
 				log.Println("Unable to connect to node:", "Zone", config.ZoneURLs[loc.Region()][loc.Zone()])
@@ -145,35 +139,18 @@ func main() {
 	<-exit
 }
 
-// func (m *Miner) client(ctx int) *ethclient.Client { return m.sliceClients[ctx] }
-
 // subscribePendingHeader subscribes to the head of the mining nodes in order to pass
 // the most up to date block to the miner within the manager.
 func (m *Miner) subscribePendingHeader() error {
-	// if _, err := m.sliceClients(common.ZONE_CTX).SubscribePendingHeader(context.Background(), m.updateCh); err != nil {
-	// 	log.Fatal("Failed to subscribe to pending header events", err)
-	// }
-
-	// user_agent_version := json.RawMessage([]byte(USER_AGENT_VER))
-	// auth := util.Miner_auth{
-	// 	Username: "user",
-	// 	Password: "pass",
-	// }
-	// auth_msg, err := json.Marshal(auth)
-	// if err != nil {
-	// 	log.Fatalf("Unable to marshal username and password: %v", err)
-	// }
 	address := "0x4a06cbb083ce0ae76aa393db8acfced7552b7218"
 	password := "password"
 
-	// msg := rpc.ConstructJSONRPC("2.0", json.RawMessage("1"), "quai_submitLogin", []json.RawMessage{[]byte(username), []byte(password)})
 	msg, err := jsonrpc.MakeRequest(1, "quai_submitLogin", address, password)
 	if err != nil {
 		log.Fatalf("Unable to create login request: %v", err)
 	}
 
 	return m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
-	// return nil
 }
 
 func (m *Miner) startListener() {
@@ -182,31 +159,17 @@ func (m *Miner) startListener() {
 
 // PendingBlocks gets the latest block when we have received a new pending header. This will get the receipts,
 // transactions, and uncles to be stored during mining.
+// As written, this will only run once at startup.
 func (m *Miner) fetchPendingHeader() {
 	retryDelay := 1 // Start retry at 1 second
 	for {
-		// header, err := m.client(common.ZONE_CTX).GetPendingHeader(context.Background())
-		// header, err := m.sliceClients[][loc.Zone()].sendRPC()
-
-		// msg := rpc.ConstructJSONRPC("2.0", json.RawMessage("1"), "quai_getPendingHeader", nil)
 		msg, err := jsonrpc.MakeRequest(1, "quai_getPendingHeader", nil)
 		if err != nil {
 			log.Fatalf("Unable to make pending header request: %v", err)
 		}
-
-		// var header_chan chan *types.Header
-
 		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
-		// log.Println("Sent pending header request")
 		header := <-m.updateCh
-		// fmt.Println(("Received from Header channel"))
 
-		// for {
-		// 	select {
-		// 		case header <-m.updateCh:
-		// 			fmt.Println(("Received from Header channel"))
-		// 		}
-		// }
 		if err != nil {
 			log.Println("Pending block not found error: ", err)
 			time.Sleep(time.Duration(retryDelay) * time.Second)
@@ -216,7 +179,7 @@ func (m *Miner) fetchPendingHeader() {
 			}
 		} else {
 			m.updateCh <- header
-			// break
+			break
 		}
 	}
 }
@@ -310,6 +273,9 @@ func (m *Miner) resultLoop() error {
 	for {
 		select {
 		case header := <-m.resultCh:
+			// Miner only needs to be aware of the proxy (stored at zone context).
+			go m.sendMinedHeader(common.ZONE_CTX, header)
+
 			order, err := m.GetDifficultyOrder(header)
 			if err != nil {
 				log.Println("Block mined has an invalid order")
@@ -322,31 +288,12 @@ func (m *Miner) resultLoop() error {
 			case common.ZONE_CTX:
 				log.Println(color.Ize(color.Blue, "ZONE block  : "), header.NumberArray(), header.Hash())
 			}
-			// Send to whichever nodes should be aware of this block
-			var wg sync.WaitGroup
-			defer wg.Wait()
-			if order <= common.PRIME_CTX {
-				go m.sendMinedHeader(common.PRIME_CTX, header, &wg)
-			}
-			if order <= common.REGION_CTX {
-				go m.sendMinedHeader(common.REGION_CTX, header, &wg)
-			}
-			if order <= common.ZONE_CTX {
-				// log.Println("Sending mined header")
-				go m.sendMinedHeader(common.ZONE_CTX, header, &wg)
-			}
 		}
 	}
 }
 
 // SendMinedHeader sends the mined block to its mining client with the transactions, uncles, and receipts.
-func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGroup) {
-	wg.Add(1)
-	// err := m.client(ctx).ReceiveMinedHeader(context.Background(), header)
-	// if err != nil {
-	// 	fmt.Println("error submitting block: ", err)
-	// }
-
+func (m *Miner) sendMinedHeader(ctx int, header *types.Header) {
 	retryDelay := 1 // Start retry at 1 second
 	for {
 		header_msg := rpc.RPCMarshalHeader(header)
@@ -355,16 +302,7 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGrou
 			log.Fatalf("Could not send mined header: %v", err)
 		}
 
-		// if err != nil {
-		// 	log.Printf("Unable to marshal pending header to send: %v", err)
-		// }
-		// msg := rpc.ConstructJSONRPC("2.0", json.RawMessage("1"), "quai_receiveMinedHeader", []json.RawMessage{header_msg})
-		// msg, err := jsonrpc.MakeRequest(1, "quai_receiveMinedHeader", header_msg)
-		// if err != nil {
-		// 	log.Fatalf("Unable to marshal mined header: %v", err)
-		// }
-		// log.Println("About to send")
-		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*header_req)
+		err = m.sliceClients[ctx].SendTCPRequest(*header_req)
 		if err != nil {
 			log.Printf("Unable to send pending header to node: %v", err)
 			time.Sleep(time.Duration(retryDelay) * time.Second)
@@ -376,31 +314,7 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header, wg *sync.WaitGrou
 			break
 		}
 		log.Println("Sent mined header")
-		// log.Println("Sent pending header request")
-		// header := <-m.updateCh
-		// m.updateCh <- header
-		// fmt.Println(("Received from Header channel"))
-
-		// for {
-		// 	select {
-		// 		case header <-m.updateCh:
-		// 			fmt.Println(("Received from Header channel"))
-		// 		}
-		// }
-		// if err != nil {
-		// 	log.Println("Pending block not found error: ", err)
-		// 	time.Sleep(time.Duration(retryDelay) * time.Second)
-		// 	retryDelay *= 2
-		// 	if retryDelay > maxRetryDelay {
-		// 		retryDelay = maxRetryDelay
-		// 	}
-		// } else {
-		// 	// m.updateCh <- header
-		// 	break
-		// }
 	}
-
-	defer wg.Done()
 }
 
 var (
@@ -422,10 +336,4 @@ func (m *Miner) GetDifficultyOrder(header *types.Header) (int, error) {
 		}
 	}
 	return -1, errors.New("block does not satisfy minimum difficulty")
-}
-
-func (client *Miner) sendRPC(method string) (string, error) {
-	// client.
-
-	return "", nil
 }

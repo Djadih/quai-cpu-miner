@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -17,6 +18,7 @@ import (
 	"github.com/dominant-strategies/go-quai/consensus/blake3pow"
 	"github.com/dominant-strategies/go-quai/core/types"
 	"github.com/dominant-strategies/go-quai/quaiclient"
+	"github.com/dominant-strategies/go-quai/quaiclient/ethclient"
 
 	"github.com/dominant-strategies/quai-cpu-miner/util"
 )
@@ -42,6 +44,9 @@ type Miner struct {
 	// Current header to mine
 	header *types.Header
 
+	// RPC client connection to mining proxy
+	proxyClient *util.MinerSession
+
 	// RPC client connections to the Quai nodes
 	sliceClients SliceClients
 
@@ -55,9 +60,31 @@ type Miner struct {
 	previousNumber [common.HierarchyDepth]uint64
 }
 
-// Clients for RPC connection to the Prime, region, & zone node belonging to the
+// Clients for RPC connection to the Prime, region, & zone ports belonging to the
 // slice we are actively mining
-type SliceClients [common.HierarchyDepth]*util.MinerSession
+type ProxyClients *util.MinerSession
+
+type SliceClients [common.HierarchyDepth]*ethclient.Client
+
+// getNodeClients takes in a config and retrieves the Prime, Region, and Zone client
+// that is used for mining in a slice.
+func connectToProxy(config util.Config) *util.MinerSession {
+	// loc := config.Location
+	zoneConnected := false
+	var client *util.MinerSession
+	var err error
+	for !zoneConnected {
+		if config.ProxyURL != "" && !zoneConnected {
+			client, err = util.NewMinerConn(config.ProxyURL)
+			if err != nil {
+				log.Println("Unable to connect to node:", "Zone", config.ProxyURL)
+			} else {
+				zoneConnected = true
+			}
+		}
+	}
+	return client
+}
 
 // getNodeClients takes in a config and retrieves the Prime, Region, and Zone client
 // that is used for mining in a slice.
@@ -70,7 +97,7 @@ func connectToSlice(config util.Config) SliceClients {
 	zoneConnected := false
 	for !primeConnected || !regionConnected || !zoneConnected {
 		if config.PrimeURL != "" && !primeConnected {
-			clients[common.PRIME_CTX], err = util.NewMinerConn(config.PrimeURL)
+			clients[common.PRIME_CTX], err = ethclient.Dial(config.PrimeURL)
 			if err != nil {
 				log.Println("Unable to connect to node:", "Prime", config.PrimeURL)
 			} else {
@@ -78,7 +105,7 @@ func connectToSlice(config util.Config) SliceClients {
 			}
 		}
 		if config.RegionURLs[loc.Region()] != "" && !regionConnected {
-			clients[common.REGION_CTX], err = util.NewMinerConn(config.RegionURLs[loc.Region()])
+			clients[common.REGION_CTX], err = ethclient.Dial(config.RegionURLs[loc.Region()])
 			if err != nil {
 				log.Println("Unable to connect to node:", "Region", config.RegionURLs[loc.Region()])
 			} else {
@@ -86,7 +113,7 @@ func connectToSlice(config util.Config) SliceClients {
 			}
 		}
 		if config.ZoneURLs[loc.Region()][loc.Zone()] != "" && !zoneConnected {
-			clients[common.ZONE_CTX], err = util.NewMinerConn(config.ZoneURLs[loc.Region()][loc.Zone()])
+			clients[common.ZONE_CTX], err = ethclient.Dial(config.ZoneURLs[loc.Region()][loc.Zone()])
 			if err != nil {
 				log.Println("Unable to connect to node:", "Zone", config.ZoneURLs[loc.Region()][loc.Zone()])
 			} else {
@@ -124,38 +151,52 @@ func main() {
 	m := &Miner{
 		config:         config,
 		engine:         blake3Engine,
-		sliceClients:   connectToSlice(config),
 		header:         types.EmptyHeader(),
 		updateCh:       make(chan *types.Header, resultQueueSize),
 		resultCh:       make(chan *types.Header, resultQueueSize),
 		previousNumber: [common.HierarchyDepth]uint64{0, 0, 0},
 	}
 	log.Println("Starting Quai cpu miner in location ", config.Location)
-	go m.startListener()
-	go m.fetchPendingHeader()
-	go m.subscribePendingHeader()
-	go m.resultLoop()
+	if config.Proxy {
+		m.proxyClient = connectToProxy(config)
+		go m.fetchPendingHeader()
+		go m.startProxyListener()
+		go m.subscribeProxy()
+	} else {
+		m.sliceClients = connectToSlice(config)
+		go m.fetchNodeHeader()
+		go m.subscribePendingHeader()
+	}
+	go m.resultLoop(config)
 	go m.miningLoop()
 	go m.hashratePrinter()
 	<-exit
 }
 
-// subscribePendingHeader subscribes to the head of the mining nodes in order to pass
+// subscribeProxy subscribes to the head of the mining nodes in order to pass
 // the most up to date block to the miner within the manager.
-func (m *Miner) subscribePendingHeader() error {
-	address := "0x4a06cbb083ce0ae76aa393db8acfced7552b7218"
-	password := "password"
+func (m *Miner) subscribeProxy() error {
+	address := m.config.RewardAddress
+	password := m.config.Password
 
 	msg, err := jsonrpc.MakeRequest(1, "quai_submitLogin", address, password)
 	if err != nil {
 		log.Fatalf("Unable to create login request: %v", err)
 	}
 
-	return m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
+	return m.proxyClient.SendTCPRequest(*msg)
 }
 
-func (m *Miner) startListener() {
-	m.sliceClients[common.ZONE_CTX].ListenTCP(m.updateCh)
+func (m *Miner) startProxyListener() {
+	m.proxyClient.ListenTCP(m.updateCh)
+}
+
+// subscribePendingHeader subscribes to the head of the mining nodes in order to pass
+// the most up to date block to the miner within the manager.
+func (m *Miner) subscribePendingHeader() {
+	if _, err := m.sliceClients[common.ZONE_CTX].SubscribePendingHeader(context.Background(), m.updateCh); err != nil {
+		log.Fatal("Failed to subscribe to pending header events", err)
+	}
 }
 
 // PendingBlocks gets the latest block when we have received a new pending header. This will get the receipts,
@@ -168,9 +209,29 @@ func (m *Miner) fetchPendingHeader() {
 		if err != nil {
 			log.Fatalf("Unable to make pending header request: %v", err)
 		}
-		err = m.sliceClients[common.ZONE_CTX].SendTCPRequest(*msg)
+		err = m.proxyClient.SendTCPRequest(*msg)
 		header := <-m.updateCh
 
+		if err != nil {
+			log.Println("Pending block not found error: ", err)
+			time.Sleep(time.Duration(retryDelay) * time.Second)
+			retryDelay *= 2
+			if retryDelay > maxRetryDelay {
+				retryDelay = maxRetryDelay
+			}
+		} else {
+			m.updateCh <- header
+			break
+		}
+	}
+}
+
+// PendingBlocks gets the latest block when we have received a new pending header. This will get the receipts,
+// transactions, and uncles to be stored during mining.
+func (m *Miner) fetchNodeHeader() {
+	retryDelay := 1 // Start retry at 1 second
+	for {
+		header, err := m.sliceClients[common.ZONE_CTX].GetPendingHeader(context.Background())
 		if err != nil {
 			log.Println("Pending block not found error: ", err)
 			time.Sleep(time.Duration(retryDelay) * time.Second)
@@ -270,14 +331,17 @@ func (m *Miner) hashratePrinter() {
 }
 
 // resultLoop takes in the result and passes to the proper channels for receiving.
-func (m *Miner) resultLoop() error {
+func (m *Miner) resultLoop(config util.Config) {
 	for {
 		select {
 		case header := <-m.resultCh:
-			// Miner only needs to be aware of the proxy (stored at zone context).
-			go m.sendMinedHeader(common.ZONE_CTX, header)
-
 			order, err := m.GetDifficultyOrder(header)
+			if !config.Proxy {
+				go m.sendMinedHeaderNodes(order, header)
+			} else {
+				// Proxy miner only needs to send to the proxy (stored at zone context).
+				go m.sendMinedHeader(header)
+			}
 			if err != nil {
 				log.Println("Block mined has an invalid order")
 			}
@@ -294,7 +358,7 @@ func (m *Miner) resultLoop() error {
 }
 
 // SendMinedHeader sends the mined block to its mining client with the transactions, uncles, and receipts.
-func (m *Miner) sendMinedHeader(ctx int, header *types.Header) {
+func (m *Miner) sendMinedHeader(header *types.Header) {
 	retryDelay := 1 // Start retry at 1 second
 	for {
 		header_req, err := jsonrpc.MakeRequest(0, "quai_receiveMinedHeader", quaiclient.RPCMarshalHeader(header))
@@ -302,7 +366,7 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header) {
 			log.Fatalf("Could not send mined header: %v", err)
 		}
 
-		err = m.sliceClients[ctx].SendTCPRequest(*header_req)
+		err = m.proxyClient.SendTCPRequest(*header_req)
 		if err != nil {
 			log.Printf("Unable to send pending header to node: %v", err)
 			time.Sleep(time.Duration(retryDelay) * time.Second)
@@ -315,6 +379,18 @@ func (m *Miner) sendMinedHeader(ctx int, header *types.Header) {
 		}
 		log.Println("Sent mined header")
 	}
+}
+
+// SendMinedHeader sends the mined block to its mining client with the transactions, uncles, and receipts.
+func (m *Miner) sendMinedHeaderNodes(order int, header *types.Header) error {
+	for i := common.HierarchyDepth - 1; i >= order; i-- {
+		err := m.sliceClients[i].ReceiveMinedHeader(context.Background(), header)
+		if err != nil {
+			fmt.Errorf("error submitting block to context %d: %v", order, err)
+			return err
+		}
+	}
+	return nil
 }
 
 var (

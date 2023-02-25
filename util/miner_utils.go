@@ -44,7 +44,7 @@ func NewMinerConn(endpoint string) (*MinerSession, error) {
 		log.Fatalf("Error: %v", err)
 		panic(err)
 	}
-	
+
 	log.Printf("New TCP client made to: %v", server.RemoteAddr().String())
 
 	return &MinerSession{proto: "tcp", ip: remoteaddr.AddrPort().Addr(), port: remoteaddr.Port, conn: server, latestId: 0, enc: json.NewEncoder(server)}, nil

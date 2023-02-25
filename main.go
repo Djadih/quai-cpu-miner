@@ -8,7 +8,6 @@ import (
 	"math/big"
 
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/INFURA/go-ethlibs/jsonrpc"
@@ -21,6 +20,7 @@ import (
 	"github.com/dominant-strategies/go-quai/quaiclient/ethclient"
 
 	"github.com/dominant-strategies/quai-cpu-miner/util"
+	"github.com/urfave/cli/v2"
 )
 
 const (
@@ -31,7 +31,17 @@ const (
 )
 
 var (
-	exit = make(chan bool)
+	exit       = make(chan bool)
+	RegionFlag = cli.IntFlag{
+		Name:    "region",
+		Aliases: []string{"r"},
+		Usage:   "CPU Miner Region flag",
+	}
+	ZoneFlag = cli.IntFlag{
+		Name:    "zone",
+		Aliases: []string{"z"},
+		Usage:   "CPU Miner Zone flag",
+	}
 )
 
 type Miner struct {
@@ -133,13 +143,55 @@ func main() {
 	if err != nil {
 		log.Fatal("cannot load config:", err)
 	}
-	// Parse mining location from args
-	if len(os.Args) > 2 {
-		raw := os.Args[1:3]
-		region, _ := strconv.Atoi(raw[0])
-		zone, _ := strconv.Atoi(raw[1])
-		config.Location = common.Location{byte(region), byte(zone)}
+	app := &cli.App{
+		Name: "Quai CPU Miner",
+		Flags: []cli.Flag{
+			&RegionFlag,
+			&ZoneFlag,
+		},
+		Commands: []*cli.Command{
+			{
+				Name:    "help",
+				Aliases: []string{"h"},
+				After: func(cCtx *cli.Context) error {
+					return nil
+				},
+			},
+		},
+		Action: func(ctx *cli.Context) error {
+			err := verifyFlags(ctx)
+			if err != nil {
+				return err
+			}
+			config.Location = common.Location{byte(ctx.Int(RegionFlag.Name)), byte(ctx.Int(ZoneFlag.Name))}
+			StartMiner(config)
+			return nil
+		},
 	}
+
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal(err)
+	}
+	<-exit
+}
+
+func verifyFlags(ctx *cli.Context) error {
+	// If the Region or Zone flags are not set, or improperly set returns
+	// Appropriate errors
+	if !ctx.IsSet(RegionFlag.Name) {
+		return errors.New("region flag is not set")
+	} else if ctx.Int(RegionFlag.Name) < 0 || ctx.Int(RegionFlag.Name) > 2 {
+		return errors.New("current ontology prime only has 3 regions, so please input between 0 and 2")
+	}
+	if !ctx.IsSet(ZoneFlag.Name) {
+		return errors.New("zone flag is not set")
+	} else if ctx.Int(ZoneFlag.Name) < 0 || ctx.Int(ZoneFlag.Name) > 2 {
+		return errors.New("current ontology each region only has 3 zones, so please input between 0 and 2")
+	}
+	return nil
+}
+
+func StartMiner(config util.Config) {
 	// Build manager config
 	blake3Config := blake3pow.Config{
 		NotifyFull: true,
@@ -168,7 +220,6 @@ func main() {
 	go m.resultLoop()
 	go m.miningLoop()
 	go m.hashratePrinter()
-	<-exit
 }
 
 // subscribeProxy subscribes to the head of the mining nodes in order to pass

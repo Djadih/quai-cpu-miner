@@ -1,11 +1,10 @@
-# Config for node URLs
-Location: []
-Auto: false
-Mine: false
-Optimize: false
-OptimizeTimer: 10
-AccountAddress: "0x4a08cba083ce0ae76aa393db8acfced7552b7218"
+# Proxy credentials
+ProxyURL: "127.0.0.1:8008"
+RewardAddress:  "0x0000000000000000000000000000000000000001"
 Password: "password"
-PrimeURL: "127.0.0.1:8008"
-RegionURLs: ["127.0.0.1:8008", "ws://127.0.0.1:8581", "ws://127.0.0.1:8583"]
-ZoneURLs: [["127.0.0.1:8008", "http://127.0.0.1:8542", "http://127.0.0.1:8674"], ["ws://127.0.0.1:8613", "ws://127.0.0.1:8645", "ws://127.0.0.1:8677"], ["ws://127.0.0.1:8615", "ws://127.0.0.1:8647", "ws://127.0.0.1:8679"] ]
+Proxy:  True
+
+# Connection details to Quai nodes
+PrimeURL: "ws://127.0.0.1:8547"
+RegionURLs: ["ws://127.0.0.1:8579", "ws://127.0.0.1:8581", "ws://127.0.0.1:8583"]
+ZoneURLs: [["ws://127.0.0.1:8611", "ws://127.0.0.1:8643", "ws://127.0.0.1:8675"], ["ws://127.0.0.1:8613", "ws://127.0.0.1:8645", "ws://127.0.0.1:8677"], ["ws://127.0.0.1:8615", "ws://127.0.0.1:8647", "ws://127.0.0.1:8679"] ]

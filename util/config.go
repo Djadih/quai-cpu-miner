@@ -9,10 +9,14 @@ import (
 
 // Config holds the configuration parameters for quai-manager
 type Config struct {
-	PrimeURL   string
-	RegionURLs []string
-	ZoneURLs   [][]string
-	Location   common.Location
+	RewardAddress string
+	Password      string
+	Proxy         bool
+	ProxyURL      string
+	PrimeURL      string
+	RegionURLs    []string
+	ZoneURLs      [][]string
+	Location      common.Location
 }
 
 // LoadConfig reads configuration from file or environment variables.
